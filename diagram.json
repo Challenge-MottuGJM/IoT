@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "author": "gu",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-esp32-devkit-v1", "id": "esp", "top": -10, "left": -20, "attrs": {} },
+    { "type": "wokwi-button", "id": "btn", "top": 100, "left": 160, "attrs": {} },
+    { "type": "wokwi-led", "id": "led", "top": -50, "left": 180, "attrs": { "color": "red" } }
+  ],
+  "connections": [
+    [ "btn:1.r", "esp:2", "green", [ "v0" ] ],
+    [ "btn:2.r", "esp:GND.1", "black", [ "v0" ] ],
+    [ "led:A", "esp:13", "red", [ "v0" ] ],
+    [ "led:C", "esp:GND.2", "black", [ "v0" ] ]
+  ]
+}
