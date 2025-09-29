@@ -30,7 +30,7 @@ const char* motoId = "MOTO_ANA";
 // THINGSPEAK (HTTP REST)
 // =====================
 const char* TS_URL       = "http://api.thingspeak.com/update";
-const char* TS_WRITE_KEY = "SUA_WRITE_KEY";
+const char* TS_WRITE_KEY = "BC0PPUUCZGJLUR6O";
 const unsigned long TS_MIN_INTERVAL = 16000; // > 15s
 unsigned long lastTsPost = 0;
 
