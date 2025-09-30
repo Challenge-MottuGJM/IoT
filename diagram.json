@@ -3,14 +3,32 @@
   "author": "gu",
   "editor": "wokwi",
   "parts": [
-    { "type": "wokwi-esp32-devkit-v1", "id": "esp", "top": -10, "left": -20, "attrs": {} },
-    { "type": "wokwi-button", "id": "btn", "top": 100, "left": 160, "attrs": {} },
-    { "type": "wokwi-led", "id": "led", "top": -50, "left": 180, "attrs": { "color": "red" } }
+    { "type": "wokwi-esp32-devkit-v1", "id": "espA", "top": -10, "left": -20, "attrs": {} },
+    { "type": "wokwi-button", "id": "btnA", "top": 100, "left": 160, "attrs": {} },
+    { "type": "wokwi-led", "id": "ledA", "top": -50, "left": 180, "attrs": { "color": "red" } },
+
+    { "type": "wokwi-esp32-devkit-v1", "id": "espB", "top": -10, "left": 360, "attrs": {} },
+    { "type": "wokwi-button", "id": "btnB", "top": 100, "left": 540, "attrs": {} },
+    { "type": "wokwi-led", "id": "ledB", "top": -50, "left": 560, "attrs": { "color": "green" } },
+
+    { "type": "wokwi-esp32-devkit-v1", "id": "espC", "top": -10, "left": 740, "attrs": {} },
+    { "type": "wokwi-button", "id": "btnC", "top": 100, "left": 920, "attrs": {} },
+    { "type": "wokwi-led", "id": "ledC", "top": -50, "left": 940, "attrs": { "color": "blue" } }
   ],
   "connections": [
-    [ "btn:1.r", "esp:2", "green", [ "v0" ] ],
-    [ "btn:2.r", "esp:GND.1", "black", [ "v0" ] ],
-    [ "led:A", "esp:13", "red", [ "v0" ] ],
-    [ "led:C", "esp:GND.2", "black", [ "v0" ] ]
+    ["btnA:1.r", "espA:2", "green", ["v0"]],
+    ["btnA:2.r", "espA:GND.1", "black", ["v0"]],
+    ["ledA:A",   "espA:13", "red", ["v0"]],
+    ["ledA:C",   "espA:GND.2", "black", ["v0"]],
+
+    ["btnB:1.r", "espB:4", "green", ["v0"]],
+    ["btnB:2.r", "espB:GND.1", "black", ["v0"]],
+    ["ledB:A",   "espB:12", "red", ["v0"]],
+    ["ledB:C",   "espB:GND.2", "black", ["v0"]],
+
+    ["btnC:1.r", "espC:5", "green", ["v0"]],
+    ["btnC:2.r", "espC:GND.1", "black", ["v0"]],
+    ["ledC:A",   "espC:14", "red", ["v0"]],
+    ["ledC:C",   "espC:GND.2", "black", ["v0"]]
   ]
 }

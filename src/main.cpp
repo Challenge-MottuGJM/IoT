@@ -3,160 +3,171 @@
 #include <HTTPClient.h>
 
 // =====================
-// CONFIGURAÇÕES GERAIS
+// PARAMETROS POR AMBIENTE (definidos no platformio.ini)
 // =====================
-const char* ssid     = "Wokwi-GUEST";
-const char* password = "";
-const char* broker   = "test.mosquitto.org";
-const uint16_t brokerPort = 1883;
+#ifndef DEVICE_ID
+  #define DEVICE_ID "espA"
+#endif
 
-// =====================
-// IDENTIFICAÇÃO POR SETOR
-// =====================
+#ifndef SECTOR
+  #define SECTOR "analise"   // "analise" | "manutencao" | "liberadas"
+#endif
 
-// === SETOR DE ANÁLISE ===
-const char* setor  = "analise";   // "analise" | "manutencao" | "liberadas"
-const char* motoId = "MOTO_ANA";
+#ifndef SENSOR_PIN
+  #define SENSOR_PIN 2       // botão/presença
+#endif
 
-// === SETOR DE MANUTENÇÃO ===
-// const char* setor  = "manutencao";
-// const char* motoId = "MOTO_MAN";
-
-// === SETOR DE LIBERADAS ===
-// const char* setor  = "liberadas";
-// const char* motoId = "MOTO_LIB";
+#ifndef LED_PIN
+  #define LED_PIN 13         // LED indicador
+#endif
 
 // =====================
-// THINGSPEAK (HTTP REST)
+// REDE E BROKER
+// =====================
+const char* WIFI_SSID   = "Wokwi-GUEST";
+const char* WIFI_PASS   = "";
+const char* MQTT_HOST   = "test.mosquitto.org";
+const uint16_t MQTT_PORT = 1883;
+
+// =====================
+// THINGSPEAK
 // =====================
 const char* TS_URL       = "http://api.thingspeak.com/update";
 const char* TS_WRITE_KEY = "BC0PPUUCZGJLUR6O";
-const unsigned long TS_MIN_INTERVAL = 16000; // > 15s
+const unsigned long TS_MIN_INTERVAL = 16000; // >15s
 unsigned long lastTsPost = 0;
 
 // =====================
-// HARDWARE
+// ESTADO LOCAL
 // =====================
-const int sensorPin = 2;   // Botão (simula presença da moto)
-const int ledPin    = 13;  // LED acende quando presente
-bool lastState = false;
+bool lastPresence = false;
 
-// Snapshot do pátio (3 setores)
+// Cada device publica apenas seu campo (1..3) para evitar colisões
 int s_analise = 0;
 int s_manut   = 0;
 int s_liber   = 0;
 
 // =====================
-// REDES
+// MQTT
 // =====================
 WiFiClient espClient;
-PubSubClient client(espClient);
+PubSubClient mqtt(espClient);
+
+String topicTelemetry() { return String("motttu/telemetry/") + DEVICE_ID; }
+String topicCmd()       { return String("motttu/actuators/") + DEVICE_ID + "/set"; }
+String topicStatus()    { return String("motttu/status/") + DEVICE_ID; }
 
 // ---------------------
-// Funções de rede
+// Conexões
 // ---------------------
-void conectarWiFi() {
-  WiFi.begin(ssid, password);
-  Serial.print("Conectando ao Wi-Fi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println(" conectado!");
+void connectWiFi() {
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Serial.print("WiFi");
+  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
+  Serial.println(" OK");
 }
 
-void conectarMQTT() {
-  client.setServer(broker, brokerPort);
-  while (!client.connected()) {
-    Serial.print("Conectando ao broker MQTT...");
-    String clientId = "ESP32Client-" + String(random(0xffff), HEX);
-    if (client.connect(clientId.c_str())) {
-      Serial.println(" conectado!");
+void onMqttMessage(char* topic, byte* payload, unsigned int len) {
+  String t = topic;
+  String body; body.reserve(len);
+  for (unsigned int i=0;i<len;i++) body += (char)payload[i];
+  Serial.printf("CMD %s %s\n", t.c_str(), body.c_str());
+
+  // Comandos simples para demonstração
+  if (body.indexOf("\"led\":1")>=0) digitalWrite(LED_PIN, HIGH);
+  if (body.indexOf("\"led\":0")>=0) digitalWrite(LED_PIN, LOW);
+}
+
+void connectMQTT() {
+  mqtt.setServer(MQTT_HOST, MQTT_PORT);
+  mqtt.setCallback(onMqttMessage);
+
+  while (!mqtt.connected()) {
+    String cid = String("ESP32-") + DEVICE_ID + "-" + String((uint32_t)esp_random(), HEX);
+    // LWT para detectar "desaparecida"
+    if (mqtt.connect(cid.c_str(), nullptr, nullptr, topicStatus().c_str(), 1, true, "offline")) {
+      mqtt.publish(topicStatus().c_str(), "online", true);
+      mqtt.subscribe(topicCmd().c_str(), 1);
+      Serial.println("MQTT OK");
     } else {
-      Serial.print(" falha, rc=");
-      Serial.print(client.state());
-      delay(2000);
+      Serial.printf("MQTT fail rc=%d\n", mqtt.state());
+      delay(1500);
     }
   }
 }
 
 // ---------------------
-// ThingSpeak via HTTP
+// ThingSpeak
 // ---------------------
 void postThingSpeakSnapshot() {
   if (WiFi.status() != WL_CONNECTED) return;
+
+  // Publica somente o campo referente ao SECTOR deste device
+  int f1=0, f2=0, f3=0;
+  if (String(SECTOR) == "analise")        f1 = s_analise;
+  else if (String(SECTOR) == "manutencao") f2 = s_manut;
+  else if (String(SECTOR) == "liberadas")  f3 = s_liber;
 
   HTTPClient http;
   WiFiClient wclient;
   http.begin(wclient, TS_URL);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
-  // Mapeamento: field1=analise, field2=manutencao, field3=liberadas
   String body = "api_key=" + String(TS_WRITE_KEY) +
-                "&field1=" + String(s_analise) +
-                "&field2=" + String(s_manut) +
-                "&field3=" + String(s_liber);
-
+                "&field1=" + String(f1) +
+                "&field2=" + String(f2) +
+                "&field3=" + String(f3);
   int code = http.POST(body);
-  Serial.printf("ThingSpeak POST %d body=%s\n", code, body.c_str());
+  Serial.printf("ThingSpeak %d body=%s\n", code, body.c_str());
   http.end();
 }
 
-void maybePublishThingSpeak(bool force = false) {
+void maybePostTS(bool force=false) {
   unsigned long now = millis();
-  if (force || now - lastTsPost > TS_MIN_INTERVAL) {
+  if (force || (now - lastTsPost) > TS_MIN_INTERVAL) {
     lastTsPost = now;
     postThingSpeakSnapshot();
   }
 }
 
-// =====================
-// SETUP/LOOP
-// =====================
+// ---------------------
+// Setup/Loop
+// ---------------------
 void setup() {
   Serial.begin(115200);
-  pinMode(sensorPin, INPUT_PULLUP);
-  pinMode(ledPin, OUTPUT);
+  pinMode(SENSOR_PIN, INPUT_PULLUP);
+  pinMode(LED_PIN, OUTPUT);
 
-  conectarWiFi();
-  client.setServer(broker, brokerPort);
+  connectWiFi();
+  connectMQTT();
 }
 
 void loop() {
-  if (!client.connected()) {
-    conectarMQTT();
-  }
-  client.loop();
+  if (!mqtt.connected()) connectMQTT();
+  mqtt.loop();
 
-  bool presente = digitalRead(sensorPin) == LOW;
-  digitalWrite(ledPin, presente ? HIGH : LOW);
+  bool present = (digitalRead(SENSOR_PIN) == LOW);
+  digitalWrite(LED_PIN, present ? HIGH : LOW);
 
-  // Atualiza o snapshot conforme o setor deste dispositivo
-  if (String(setor) == "analise")        s_analise = presente ? 1 : 0;
-  else if (String(setor) == "manutencao") s_manut   = presente ? 1 : 0;
-  else if (String(setor) == "liberadas")  s_liber   = presente ? 1 : 0;
+  // Atualiza snapshot local para o setor deste device
+  if (String(SECTOR) == "analise")        s_analise = present ? 1 : 0;
+  else if (String(SECTOR) == "manutencao") s_manut   = present ? 1 : 0;
+  else if (String(SECTOR) == "liberadas")  s_liber   = present ? 1 : 0;
 
-  // Publica eventos on-change (MQTT local) e agenda envio ao ThingSpeak
-  if (presente != lastState) {
-    lastState = presente;
-    String topic = "patio/moto/" + String(setor);
-    String mensagem = "{";
-    mensagem += "\"motoId\":\"" + String(motoId) + "\",";
-    mensagem += "\"presente\":" + String(presente ? "true" : "false") + ",";
-    mensagem += "\"status\":\"" + String(presente ? "entrou" : "saiu") + "\"";
-    mensagem += "}";
-    client.publish(topic.c_str(), mensagem.c_str());
-    Serial.print("Publicado em ");
-    Serial.print(topic);
-    Serial.print(": ");
-    Serial.println(mensagem);
-
-    // Dispara ThingSpeak respeitando rate limit (envia já ou no próximo heartbeat)
-    maybePublishThingSpeak();
+  // Evento on-change
+  if (present != lastPresence) {
+    lastPresence = present;
+    String msg = String("{\"deviceId\":\"") + DEVICE_ID + "\","
+                + "\"sector\":\"" + SECTOR + "\","
+                + "\"present\":" + (present ? "true":"false") + ","
+                + "\"ts\":" + String((uint32_t)(millis()/1000)) + "}";
+    mqtt.publish(topicTelemetry().c_str(), msg.c_str(), false);
+    Serial.printf("PUB %s %s\n", topicTelemetry().c_str(), msg.c_str());
+    maybePostTS(true);
   }
 
-  // Heartbeat periódico para atualizar o dashboard (>= 16s)
-  maybePublishThingSpeak(false);
+  // Heartbeat TS (respeita rate limit)
+  maybePostTS(false);
 
   delay(200);
 }
