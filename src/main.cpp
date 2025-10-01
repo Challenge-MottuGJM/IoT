@@ -2,9 +2,7 @@
 #include <PubSubClient.h>
 #include <HTTPClient.h>
 
-// =====================
-// PARAMETROS POR AMBIENTE (definidos no platformio.ini)
-// =====================
+
 #ifndef DEVICE_ID
   #define DEVICE_ID "espA"
 #endif
@@ -14,42 +12,28 @@
 #endif
 
 #ifndef SENSOR_PIN
-  #define SENSOR_PIN 2       // botão/presença
+  #define SENSOR_PIN 2
 #endif
 
 #ifndef LED_PIN
-  #define LED_PIN 13         // LED indicador
+  #define LED_PIN 13
 #endif
 
-// =====================
-// REDE E BROKER
-// =====================
 const char* WIFI_SSID   = "Wokwi-GUEST";
 const char* WIFI_PASS   = "";
 const char* MQTT_HOST   = "test.mosquitto.org";
 const uint16_t MQTT_PORT = 1883;
-
-// =====================
-// THINGSPEAK
-// =====================
 const char* TS_URL       = "http://api.thingspeak.com/update";
 const char* TS_WRITE_KEY = "BC0PPUUCZGJLUR6O";
-const unsigned long TS_MIN_INTERVAL = 16000; // >15s
+const unsigned long TS_MIN_INTERVAL = 16000;
 unsigned long lastTsPost = 0;
 
-// =====================
-// ESTADO LOCAL
-// =====================
 bool lastPresence = false;
 
-// Cada device publica apenas seu campo (1..3) para evitar colisões
 int s_analise = 0;
 int s_manut   = 0;
 int s_liber   = 0;
 
-// =====================
-// MQTT
-// =====================
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 
@@ -57,9 +41,7 @@ String topicTelemetry() { return String("motttu/telemetry/") + DEVICE_ID; }
 String topicCmd()       { return String("motttu/actuators/") + DEVICE_ID + "/set"; }
 String topicStatus()    { return String("motttu/status/") + DEVICE_ID; }
 
-// ---------------------
-// Conexões
-// ---------------------
+
 void connectWiFi() {
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   Serial.print("WiFi");
@@ -73,7 +55,6 @@ void onMqttMessage(char* topic, byte* payload, unsigned int len) {
   for (unsigned int i=0;i<len;i++) body += (char)payload[i];
   Serial.printf("CMD %s %s\n", t.c_str(), body.c_str());
 
-  // Comandos simples para demonstração
   if (body.indexOf("\"led\":1")>=0) digitalWrite(LED_PIN, HIGH);
   if (body.indexOf("\"led\":0")>=0) digitalWrite(LED_PIN, LOW);
 }
@@ -84,7 +65,6 @@ void connectMQTT() {
 
   while (!mqtt.connected()) {
     String cid = String("ESP32-") + DEVICE_ID + "-" + String((uint32_t)esp_random(), HEX);
-    // LWT para detectar "desaparecida"
     if (mqtt.connect(cid.c_str(), nullptr, nullptr, topicStatus().c_str(), 1, true, "offline")) {
       mqtt.publish(topicStatus().c_str(), "online", true);
       mqtt.subscribe(topicCmd().c_str(), 1);
@@ -96,9 +76,6 @@ void connectMQTT() {
   }
 }
 
-// ---------------------
-// ThingSpeak
-// ---------------------
 void postThingSpeakSnapshot() {
   if (WiFi.status() != WL_CONNECTED) return;
 
@@ -131,9 +108,6 @@ void maybePostTS(bool force=false) {
   }
 }
 
-// ---------------------
-// Setup/Loop
-// ---------------------
 void setup() {
   Serial.begin(115200);
   pinMode(SENSOR_PIN, INPUT_PULLUP);
@@ -150,12 +124,10 @@ void loop() {
   bool present = (digitalRead(SENSOR_PIN) == LOW);
   digitalWrite(LED_PIN, present ? HIGH : LOW);
 
-  // Atualiza snapshot local para o setor deste device
   if (String(SECTOR) == "analise")        s_analise = present ? 1 : 0;
   else if (String(SECTOR) == "manutencao") s_manut   = present ? 1 : 0;
   else if (String(SECTOR) == "liberadas")  s_liber   = present ? 1 : 0;
 
-  // Evento on-change
   if (present != lastPresence) {
     lastPresence = present;
     String msg = String("{\"deviceId\":\"") + DEVICE_ID + "\","
@@ -167,7 +139,6 @@ void loop() {
     maybePostTS(true);
   }
 
-  // Heartbeat TS (respeita rate limit)
   maybePostTS(false);
 
   delay(200);
