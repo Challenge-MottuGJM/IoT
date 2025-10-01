@@ -1,0 +1,9 @@
+{
+"name": "iot-collector",
+"version": "1.0.0",
+"type": "module",
+"dependencies": {
+"mqtt": "^5.0.0",
+"better-sqlite3": "^11.0.0"
+}
+}

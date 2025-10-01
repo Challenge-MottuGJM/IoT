@@ -102,11 +102,10 @@ void connectMQTT() {
 void postThingSpeakSnapshot() {
   if (WiFi.status() != WL_CONNECTED) return;
 
-  // Publica somente o campo referente ao SECTOR deste device
   int f1=0, f2=0, f3=0;
-  if (String(SECTOR) == "analise")        f1 = s_analise;
+  if (String(SECTOR) == "analise") f1 = s_analise;
   else if (String(SECTOR) == "manutencao") f2 = s_manut;
-  else if (String(SECTOR) == "liberadas")  f3 = s_liber;
+  else if (String(SECTOR) == "liberadas") f3 = s_liber;
 
   HTTPClient http;
   WiFiClient wclient;
@@ -117,8 +116,10 @@ void postThingSpeakSnapshot() {
                 "&field1=" + String(f1) +
                 "&field2=" + String(f2) +
                 "&field3=" + String(f3);
+
   int code = http.POST(body);
-  Serial.printf("ThingSpeak %d body=%s\n", code, body.c_str());
+  String resp = http.getString();
+  Serial.printf("ThingSpeak %d body=%s resp=%s\n", code, body.c_str(), resp.c_str());
   http.end();
 }
 
