@@ -1,10 +1,18 @@
-# 📡 Projeto IoT: Monitoramento de Motos por Setor (ESP32 + MQTT + Wokwi)
+# 📡 Projeto IoT: Monitoramento por Setor (MQTT + Coletor Node + ThingSpeak)
 
-Este projeto simula um sistema de monitoramento de motos em um pátio com diferentes setores utilizando ESP32, sensores de presença, MQTT e visualização via Node-RED Dashboard.
+Este projeto simula um pátio com três setores (Análise, Manutenção, Liberadas), publica eventos via MQTT e registra tudo de forma persistente (SQLite/CSV) através de um coletor Node.js, além de atualizar um canal ThingSpeak para visualização em tempo real.
 
 ## 🧠 Objetivo
 
-Identificar em qual setor uma moto está localizada (Análise, Manutenção ou Liberadas) e enviar automaticamente essa informação via MQTT, com visualização em tempo real no dashboard do Node-RED.
+- Identificar em qual setor uma moto está localizada (Análise, Manutenção ou Liberadas)
+  
+- Simular presença por setor e publicar eventos no broker MQTT.
+
+- Coletar e persistir os eventos em banco local (SQLite) e arquivo CSV.
+
+- Enviar o snapshot dos três setores para o ThingSpeak a cada ~20 s e visualizar nos fields do canal.
+
+
 
 ---
 
@@ -12,8 +20,8 @@ Identificar em qual setor uma moto está localizada (Análise, Manutenção ou L
 
 - ESP32 (simulado via [Wokwi](https://wokwi.com))
 - MQTT (Mosquitto Broker)
-- Wi-Fi (rede simulada Wokwi)
-- Node-RED + Dashboard
+- Node.js (coletor com mqtt + better‑sqlite3 + node-fetch)
+- ThingSpeak (canal com fields por setor)
 - Visual Studio Code + PlatformIO
 
 ---
@@ -21,93 +29,107 @@ Identificar em qual setor uma moto está localizada (Análise, Manutenção ou L
 ## 📂 Estrutura do Projeto
 
 ```
-.
-├── main.cpp             # Código principal (setor configurável)
-├── diagram.json         # Circuito Wokwi (ESP32, botão e LED)
-├── wokwi.toml           # Arquivo de configuração da simulação
-├── platformio.ini       # Configuração do ambiente PlatformIO
+IOT/
+├── src/main.cpp                # Firmware ESP32 (opcional para uso real)
+├── platformio.ini              # Ambientes espA/espB/espC (opcional)
+├── diagram.json / wokwi.toml   # Simulação Wokwi (opcional)
+└── iot-collector/              # Coletor e simulador (Node.js)
+    ├── collector.js            # Assina MQTT, salva em SQLite/CSV e envia ao ThingSpeak [web:771][web:866][web:893]
+    ├── simulator.js            # Publica eventos simulados para espA/espB/espC [web:771]
+    ├── iot_events.db           # Banco SQLite (gerado em runtime) [web:866]
+    └── events.csv              # Log CSV (gerado em runtime) [web:866]
 ```
 
 ---
 
-## ▶️ Como Executar no VS Code (usando Wokwi CLI)
+## ▶️ Como Executar no VS Code (sem hardware)
 
-### 1. Compile o projeto
+### 1. Preparar o coletor
 
-No terminal do VS Code:
+No diretório IOT/iot-collector:
 
 ```bash
-pio run
+- npm init -y
+- npm i mqtt better-sqlite3 node-fetch
 ```
 
-> Isso gera o firmware `.elf` e `.hex` na pasta `.pio/build/esp32dev`.
+No package.json, inclua "type": "module" para permitir import ESM.
+Em collector.js:
 
+- Configure a Write API Key do seu canal ThingSpeak (TS_WRITE_KEY) e confirme o mapeamento field1=analise, field2=manutencao, field3=liberadas.
+  
+Rodar o coletor:
+- node collector.js → deve exibir “MQTT conectado”.
 ---
 
-### 2. Rode a simulação com Wokwi CLI
+### 2. Rodar o simulador de eventos
 
+- Em outro terminal na mesma pasta:
 ```bash
-wokwi
+node simulator.js
 ```
+> publica mensagens alternando entre espA/espB/espC a cada ~7 s.
+O collector mostrará “EVENTO …” e criará/atualizará iot_events.db e events.csv.
+---
+
+### 3. Conferir persistência
+
+CSV crescendo a cada evento.
+Consultas rápidas (via script ou CLI):
+- Contagem por setor/estado e última leitura.
 
 ---
 
-### 3. Interaja com o circuito
+### 4. Visualização no ThingSpeak
 
-- Pressione o botão → simula a entrada da moto no setor
-- O LED acende enquanto a moto estiver presente
-- A mensagem MQTT será publicada automaticamente
-
----
+O collector envia o snapshot a cada 20 s para o endpoint /update com api_key + field1..3.
+Em cada Chart do canal:
+- Type: Step (degrau)
+- Y‑Axis Min = 0, Y‑Axis Max = 1
+- Title curto por setor
+- Active Refresh (Dynamic) se desejar autoupdate
 
 ## 📡 Tópicos MQTT utilizados
 
-- `patio/moto/analise`
+- `Publicação de telemetria: motttu/telemetry/espA | espB | espC`
 - `patio/moto/manutencao`
 - `patio/moto/liberadas`
 
-> A mensagem enviada será no formato:
+> Payload de exemplo:
 
 ```json
 {
-  "motoId": "MOTO_LIB",
-  "presente": true,
-  "status": "entrou"
+"deviceId":"espA",
+"sector":"analise",
+"present":true,
+"ts": 1710000000
 }
 ```
 
 ---
 
-## 🖥 Visualização no Node-RED
+## Mapeamento de Fields no ThingSpeak
 
-1. Importe o fluxo `nodered_mqtt_dashboard.json` no Node-RED
-2. Configure o broker para `localhost:1883`
-3. Acesse: `http://localhost:1880/ui`
-
----
-
-## 🔧 Configurando o Setor
-
-No arquivo `main.cpp`, edite as seguintes linhas para definir o setor:
-
-```cpp
-const char* setor = "manutencao";
-const char* motoId = "MOTO_MAN";
-```
-
-Use:
-- `"analise"` e `"MOTO_ANA"` para setor de análise
-- `"manutencao"` e `"MOTO_MAN"` para manutenção
-- `"liberadas"` e `"MOTO_LIB"` para motos prontas
-
+- field1 → Análise
+- field2 → Manutenção
+- field3 → Liberadas
+Atualização mínima respeitada pelo coletor: 20 s (recomendado para plano free).
 ---
 
 ## ✅ Requisitos
 
 - PlatformIO instalado no VS Code
+- Node.js 18+ instalado
 - Wokwi CLI instalado e configurado (com token)
-- Mosquitto MQTT Broker em execução
-- Node-RED rodando com dashboard habilitado
+- Acesso ao broker MQTT público (test.mosquitto.org)
+- Canal ThingSpeak criado com 3 fields e Write API Key configurada no collector
+
+---
+### 🧑‍🤝‍🧑 Integrantes do Projeto
+
+- **Gustavo de Aguiar Lima Silva** - RM: 557707  
+- **Julio Cesar Conceição Rodrigues** - RM: 557298  
+- **Matheus de Freitas Silva** - RM: 552602
 
 ---
 
